@@ -45,6 +45,12 @@ variable "talos_access_cidr" {
   description = "CIDR block for access to Talos API"
 }
 
+variable "expose_talos_api_via_lb" {
+  type        = bool
+  description = "Expose Talos API (port 50000) through the apiserver load balancer"
+  default     = false
+}
+
 variable "group_nodes_together" {
   type        = bool
   description = "Whether or not to create a placement group and place the nodes together."
@@ -131,6 +137,16 @@ output "apiserver_lb_url" {
   value = "https://${aws_lb.apiserver.dns_name}:6443"
 }
 
+output "talos_api_lb_target_group_arn" {
+  value       = var.expose_talos_api_via_lb ? aws_lb_target_group.talos-50000[0].arn : ""
+  description = "ARN of the Talos API target group (empty if not exposed via LB)"
+}
+
+output "talos_api_lb_url" {
+  value       = var.expose_talos_api_via_lb ? "https://${aws_lb.apiserver.dns_name}:50000" : ""
+  description = "URL for Talos API via load balancer (empty if not exposed)"
+}
+
 output "cleartext_int_lb_target_group_arn" {
   value       = aws_lb_target_group.ingress-int-clear.arn
   description = "ARN of the target group for internal cleartext"
@@ -179,6 +195,18 @@ resource "aws_security_group" "cluster-apiserver-lb" {
   }
 }
 
+# Allow Talos API ingress to apiserver LB (optional)
+resource "aws_security_group_rule" "apiserver-lb-talos" {
+  count             = var.expose_talos_api_via_lb ? 1 : 0
+  type              = "ingress"
+  description       = "Talos API"
+  from_port         = 50000
+  to_port           = 50000
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = aws_security_group.cluster-apiserver-lb.id
+}
+
 # Listener for the k8s apiserver
 resource "aws_lb_listener" "apiserver-6443" {
   load_balancer_arn = aws_lb.apiserver.arn
@@ -217,6 +245,46 @@ resource "aws_lb_target_group" "apiserver-6443" {
   }
 }
 
+# Listener for the Talos API (optional)
+resource "aws_lb_listener" "talos-50000" {
+  count             = var.expose_talos_api_via_lb ? 1 : 0
+  load_balancer_arn = aws_lb.apiserver.arn
+  port              = "50000"
+  protocol          = "TCP"
+  tags = {
+    Cluster = var.cluster_name
+  }
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.talos-50000[0].arn
+  }
+}
+
+# Target group for the Talos API (optional)
+resource "aws_lb_target_group" "talos-50000" {
+  count              = var.expose_talos_api_via_lb ? 1 : 0
+  name               = "${var.cluster_name}-talos-50000"
+  port               = 50000
+  protocol           = "TCP"
+  vpc_id             = var.vpc_id
+  proxy_protocol_v2  = false
+  preserve_client_ip = true
+  target_type        = "instance"
+
+  health_check {
+    protocol            = "TCP"
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+    interval            = 10
+    port                = 50000
+  }
+
+  tags = {
+    Cluster = var.cluster_name
+  }
+}
+
 # Security Group for K8S Nodes
 resource "aws_security_group" "cluster-node" {
   name   = "${var.cluster_name}-nodes"
@@ -235,6 +303,17 @@ resource "aws_security_group_rule" "apiserver" {
   type                     = "ingress"
   from_port                = 6443
   to_port                  = 6443
+  protocol                 = "TCP"
+  security_group_id        = aws_security_group.cluster-node.id
+  source_security_group_id = aws_security_group.cluster-apiserver-lb.id
+}
+
+# Access to the Talos API from the loadbalancer (optional)
+resource "aws_security_group_rule" "talos-lb" {
+  count                    = var.expose_talos_api_via_lb ? 1 : 0
+  type                     = "ingress"
+  from_port                = 50000
+  to_port                  = 50000
   protocol                 = "TCP"
   security_group_id        = aws_security_group.cluster-node.id
   source_security_group_id = aws_security_group.cluster-apiserver-lb.id
