@@ -273,3 +273,36 @@ run "global_accelerator_configuration" {
     error_message = "Global Accelerator should have HTTPS listener"
   }
 }
+
+# Test Talos machine secrets generation
+run "machine_secrets_generation" {
+  command = plan
+
+  variables {
+    aws_region               = "us-west-2"
+    vpc_id                   = "vpc-12345678"
+    cluster_name             = "test-cluster"
+    organization             = "test-org"
+    cluster_lb_subnets       = ["subnet-abc123"]
+    talos_version            = "v1.7.0"
+    talos_arch               = "amd64"
+    k8s_version              = "v1.30.0"
+    apiserver_internal_lb    = false
+    talos_access_cidr        = ["10.0.0.0/8"]
+    group_nodes_together     = false
+    dns_zone_id              = "test-zone-id"
+    dns_provider             = "cloudflare"
+    sso_accelerator_dns_name = "sso.example.com"
+    node_access_cidrs        = ["10.0.0.0/8"]
+  }
+
+  assert {
+    condition     = talos_machine_secrets.this != null
+    error_message = "Talos machine secrets should be generated"
+  }
+
+  assert {
+    condition     = output.talos_machine_secrets != null
+    error_message = "Talos machine secrets output should be available"
+  }
+}

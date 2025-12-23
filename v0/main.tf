@@ -88,6 +88,12 @@ variable "dns_zone_id" {
   description = "DNS Zone ID (Cloudflare Zone ID or Route53 Hosted Zone ID)"
 }
 
+variable "enable_global_accelerator" {
+  type        = bool
+  description = "Enable AWS Global Accelerator for the cluster ingress"
+  default     = true
+}
+
 # tflint-ignore: terraform_unused_declarations
 variable "sso_accelerator_dns_name" {
   type        = string
@@ -986,31 +992,36 @@ resource "aws_iam_role_policy_attachment" "csi" {
 }
 
 resource "aws_s3_bucket" "flow-logs" {
+  count  = var.enable_global_accelerator ? 1 : 0
   bucket = "${var.organization}-${var.cluster_name}-flow-logs"
 }
 
 resource "aws_globalaccelerator_accelerator" "cluster" {
+  count           = var.enable_global_accelerator ? 1 : 0
   name            = var.cluster_name
   ip_address_type = "IPV4"
   enabled         = true
 
   attributes {
     flow_logs_enabled   = true
-    flow_logs_s3_bucket = aws_s3_bucket.flow-logs.bucket
+    flow_logs_s3_bucket = aws_s3_bucket.flow-logs[0].bucket
     flow_logs_s3_prefix = "flow-logs/"
   }
 }
 
 output "aga_dns" {
-  value = aws_globalaccelerator_accelerator.cluster.dns_name
+  value       = var.enable_global_accelerator ? aws_globalaccelerator_accelerator.cluster[0].dns_name : ""
+  description = "Global Accelerator DNS name (empty if Global Accelerator is disabled)"
 }
 
 output "aga_ips" {
-  value = aws_globalaccelerator_accelerator.cluster.ip_sets
+  value       = var.enable_global_accelerator ? aws_globalaccelerator_accelerator.cluster[0].ip_sets : []
+  description = "Global Accelerator IP sets (empty if Global Accelerator is disabled)"
 }
 
 resource "aws_globalaccelerator_listener" "http" {
-  accelerator_arn = aws_globalaccelerator_accelerator.cluster.id
+  count           = var.enable_global_accelerator ? 1 : 0
+  accelerator_arn = aws_globalaccelerator_accelerator.cluster[0].id
   #client_affinity = "SOURCE_IP"
   protocol = "TCP"
   port_range {
@@ -1020,7 +1031,8 @@ resource "aws_globalaccelerator_listener" "http" {
 }
 
 resource "aws_globalaccelerator_listener" "https" {
-  accelerator_arn = aws_globalaccelerator_accelerator.cluster.id
+  count           = var.enable_global_accelerator ? 1 : 0
+  accelerator_arn = aws_globalaccelerator_accelerator.cluster[0].id
   #client_affinity = "SOURCE_IP"
   protocol = "TCP"
   port_range {
@@ -1030,7 +1042,8 @@ resource "aws_globalaccelerator_listener" "https" {
 }
 
 resource "aws_globalaccelerator_endpoint_group" "http" {
-  listener_arn = aws_globalaccelerator_listener.http.id
+  count        = var.enable_global_accelerator ? 1 : 0
+  listener_arn = aws_globalaccelerator_listener.http[0].id
   endpoint_configuration {
     endpoint_id                    = aws_lb.ingress-ext.arn
     client_ip_preservation_enabled = true
@@ -1039,7 +1052,8 @@ resource "aws_globalaccelerator_endpoint_group" "http" {
 }
 
 resource "aws_globalaccelerator_endpoint_group" "https" {
-  listener_arn = aws_globalaccelerator_listener.https.id
+  count        = var.enable_global_accelerator ? 1 : 0
+  listener_arn = aws_globalaccelerator_listener.https[0].id
   endpoint_configuration {
     endpoint_id                    = aws_lb.ingress-ext.arn
     client_ip_preservation_enabled = true
