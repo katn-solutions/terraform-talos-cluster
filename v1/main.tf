@@ -95,6 +95,12 @@ variable "organization" {
   description = "Organization name for S3 bucket naming (ensures global uniqueness)"
 }
 
+variable "control_plane_node_endpoints" {
+  type        = list(string)
+  description = "List of control plane node IP addresses or hostnames for talosconfig generation"
+  default     = []
+}
+
 # -------------------------------------------------------------------------------------
 
 resource "aws_placement_group" "resource_group" {
@@ -115,6 +121,22 @@ resource "talos_machine_secrets" "this" {}
 output "talos_machine_secrets" {
   value       = talos_machine_secrets.this
   description = "Talos machine secrets for cluster nodes"
+  sensitive   = true
+}
+
+# Talos Client Configuration
+# Generate talosconfig for CLI access to control plane nodes
+data "talos_client_configuration" "this" {
+  count                = length(var.control_plane_node_endpoints) > 0 ? 1 : 0
+  cluster_name         = var.cluster_name
+  client_configuration = talos_machine_secrets.this.client_configuration
+  endpoints            = var.control_plane_node_endpoints
+  nodes                = var.control_plane_node_endpoints
+}
+
+output "talosconfig" {
+  description = "Talosconfig for CLI access to cluster control plane nodes"
+  value       = length(data.talos_client_configuration.this) > 0 ? data.talos_client_configuration.this[0].talos_config : null
   sensitive   = true
 }
 

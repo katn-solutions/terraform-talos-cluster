@@ -306,3 +306,71 @@ run "machine_secrets_generation" {
     error_message = "Talos machine secrets output should be available"
   }
 }
+
+# Test talosconfig generation with control plane endpoints
+run "talosconfig_generation" {
+  command = plan
+
+  variables {
+    aws_region                     = "us-west-2"
+    vpc_id                         = "vpc-12345678"
+    cluster_name                   = "test-cluster"
+    organization                   = "test-org"
+    cluster_lb_subnets             = ["subnet-abc123"]
+    talos_version                  = "v1.7.0"
+    talos_arch                     = "amd64"
+    k8s_version                    = "v1.30.0"
+    apiserver_internal_lb          = false
+    talos_access_cidr              = ["10.0.0.0/8"]
+    group_nodes_together           = false
+    dns_zone_id                    = "test-zone-id"
+    dns_provider                   = "cloudflare"
+    sso_accelerator_dns_name       = "sso.example.com"
+    node_access_cidrs              = ["10.0.0.0/8"]
+    control_plane_node_endpoints   = ["10.0.1.10", "10.0.1.11", "10.0.1.12"]
+  }
+
+  assert {
+    condition     = data.talos_client_configuration.this[0] != null
+    error_message = "Talos client configuration should be generated when endpoints are provided"
+  }
+
+  assert {
+    condition     = output.talosconfig != null
+    error_message = "Talosconfig output should be available when endpoints are provided"
+  }
+}
+
+# Test talosconfig not generated without endpoints
+run "talosconfig_no_endpoints" {
+  command = plan
+
+  variables {
+    aws_region                     = "us-west-2"
+    vpc_id                         = "vpc-12345678"
+    cluster_name                   = "test-cluster"
+    organization                   = "test-org"
+    cluster_lb_subnets             = ["subnet-abc123"]
+    talos_version                  = "v1.7.0"
+    talos_arch                     = "amd64"
+    k8s_version                    = "v1.30.0"
+    apiserver_internal_lb          = false
+    talos_access_cidr              = ["10.0.0.0/8"]
+    group_nodes_together           = false
+    dns_zone_id                    = "test-zone-id"
+    dns_provider                   = "cloudflare"
+    sso_accelerator_dns_name       = "sso.example.com"
+    node_access_cidrs              = ["10.0.0.0/8"]
+    control_plane_node_endpoints   = []
+  }
+
+  assert {
+    condition     = length(data.talos_client_configuration.this) == 0
+    error_message = "Talos client configuration should not be generated when no endpoints provided"
+  }
+
+  assert {
+    condition     = output.talosconfig == null
+    error_message = "Talosconfig output should be null when no endpoints provided"
+  }
+}
