@@ -374,3 +374,46 @@ run "talosconfig_no_endpoints" {
     error_message = "Talosconfig output should be null when no endpoints provided"
   }
 }
+
+# Test security group outputs
+run "security_group_outputs" {
+  command = plan
+
+  variables {
+    aws_region               = "us-west-2"
+    vpc_id                   = "vpc-12345678"
+    cluster_name             = "test-cluster"
+    organization             = "test-org"
+    cluster_lb_subnets       = ["subnet-abc123"]
+    talos_version            = "v1.7.0"
+    talos_arch               = "amd64"
+    k8s_version              = "v1.30.0"
+    apiserver_internal_lb    = false
+    talos_access_cidr        = ["10.0.0.0/8"]
+    group_nodes_together     = false
+    dns_zone_id              = "test-zone-id"
+    dns_provider             = "cloudflare"
+    sso_accelerator_dns_name = "sso.example.com"
+    node_access_cidrs        = ["10.0.0.0/8"]
+  }
+
+  assert {
+    condition     = output.internal_ingress_lb_security_group_id == aws_security_group.cluster-ingress-lb-int.id
+    error_message = "Internal ingress LB security group ID output should match resource"
+  }
+
+  assert {
+    condition     = output.external_ingress_lb_security_group_id == aws_security_group.cluster-ingress-lb-ext.id
+    error_message = "External ingress LB security group ID output should match resource"
+  }
+
+  assert {
+    condition     = output.internal_ingress_lb_security_group_id != ""
+    error_message = "Internal ingress LB security group ID should not be empty"
+  }
+
+  assert {
+    condition     = output.external_ingress_lb_security_group_id != ""
+    error_message = "External ingress LB security group ID should not be empty"
+  }
+}

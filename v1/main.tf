@@ -581,6 +581,16 @@ output "external_lb_arn" {
   description = "ARN of external ingress load balancer"
 }
 
+output "internal_ingress_lb_security_group_id" {
+  value       = aws_security_group.cluster-ingress-lb-int.id
+  description = "Security group ID for internal ingress load balancer"
+}
+
+output "external_ingress_lb_security_group_id" {
+  value       = aws_security_group.cluster-ingress-lb-ext.id
+  description = "Security group ID for external ingress load balancer"
+}
+
 # Security group for external ingress
 resource "aws_security_group" "cluster-ingress-lb-ext" {
   vpc_id = var.vpc_id
